@@ -1,0 +1,510 @@
+```{r}
+# read dataset
+set.seed(10)
+library(readxl)
+creditcard <- read_excel("C:/Users/taeho/Documents/creditcard.xlsx")
+# View(creditcard)
+```
+
+```{r}
+# number of predictors and observations
+k=length(creditcard[1,])-2
+n=nrow(creditcard)
+
+
+crx = sapply(creditcard[,c(-1,-31)], function(x) (x - min(x, na.rm = T)) / (max(x, na.rm = T) - min(x, na.rm=T)))
+df = cbind(creditcard[,31], crx)
+attach(df)
+
+```
+
+```{r}
+attach(df)
+glmAll =glm(Class~V1+V2+V3+V4+V5+V6+V7+V8+V9+V10+V11+V12+V13+V14+V15+
+              V16+V17+V18+V19+V20+V21+V22+V23+V24+V25+V26+V27+V28+Amount,data=df,family="binomial")
+summary(glmAll)
+```
+
+
+```{r}
+library(caret)
+library(InformationValue)
+library(ISLR)
+
+confusionMatrix(predict(glmAll, type="response") >= 0.5, df$Class)->tt
+(tt[1,1]+tt[2,2])/sum(tt)*100
+
+
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+
+
+```{r}
+if (tensorflow::tf$executing_eagerly())
+  tensorflow::tf$compat$v1$disable_eager_execution()
+
+library(keras)
+K <- keras::backend()
+# training parameters
+vae_batch_size = 160L
+fnn_batch_size = 160L
+epochs = 1L
+vae_ep = 1L
+fnn_ep = 7L
+vae_flag = 0L
+
+sel_pr_up = 0.6 # upper bound probability for VAE
+sel_pr_dw = 0.0 # lower bound probability for VAE
+sel_rate = 1.0
+
+vae_w1 = 0.0
+vae_w2 = 0.0
+vae_w3 = 1.0
+
+# latent and intermediate dimension
+latent_dim = 2L
+intermediate_dim = 10L
+epsilon_std <- 0.1
+
+
+
+
+# input image dimensions
+input_shape = c(k+1)
+```
+
+```{r}
+model1 <- keras_model_sequential() %>% 
+    layer_dense(units = 1, activation = "sigmoid", input_shape = c(29)) 
+  # %>%     layer_dense(units = 1, activation = "sigmoid")
+  
+  model1 %>% compile(
+    optimizer = "rmsprop",
+    loss = "binary_crossentropy",
+    metrics = c("accuracy")
+  )
+
+  
+```
+
+```{r}
+
+history2 <- model1 %>% fit(
+    as.matrix(df[,-1]), as.matrix(df[,1]), 
+    shuffle = TRUE,
+    epochs = fnn_ep, batch_size = fnn_batch_size,
+    verbose = 0
+  )
+
+
+temp3<-predict(model1,as.matrix(df[,-1]))
+confusionMatrix(temp3>=0.5, df[,1]) -> tt3
+tt3
+(tt3[1,1]+tt3[2,2])/(sum(tt3))*100
+tt3[1,1]/(tt3[1,1]+tt3[1,2])*100
+tt3[2,2]/(tt3[2,1]+tt3[2,2])*100
+
+
+
+```
+```{r}
+
+# 0의 범주를 갖는 행과 1의 범주를 갖는 행을 분리
+df_class_0 <- df[df$Class == 0, ]
+df_class_1 <- df[df$Class == 1, ]
+nrow(df_class_0)
+nrow(df_class_1)
+df_class_1 <- df_class_1[sample(nrow(df_class_1),nrow(df_class_0),replace=TRUE),]
+oversample <- rbind(df_class_0, df_class_1)
+oversample <- oversample[sample(nrow(oversample),nrow(oversample),replace=FALSE),]
+
+```
+
+
+```{r}
+
+glmOVER =glm(Class~V1+V2+V3+V4+V5+V6+V7+V8+V9+V10+V11+V12+V13+V14+V15+
+              V16+V17+V18+V19+V20+V21+V22+V23+V24+V25+V26+V27+V28+Amount,data=oversample,family="binomial")
+summary(glmOVER)
+```
+```{r}
+confusionMatrix(predict(glmOVER, type="response") >= 0.5, oversample$Class)->tt
+(tt[1,1]+tt[2,2])/sum(tt)*100
+
+
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+
+```{r}
+model1 <- keras_model_sequential() %>% 
+    layer_dense(units = 1, activation = "sigmoid", input_shape = c(29)) 
+  # %>%     layer_dense(units = 1, activation = "sigmoid")
+  
+  model1 %>% compile(
+    optimizer = "rmsprop",
+    loss = "binary_crossentropy",
+    metrics = c("accuracy")
+  )
+
+  
+```
+
+```{r}
+
+history2 <- model1 %>% fit(
+    as.matrix(oversample[,-1]), as.matrix(oversample[,1]), 
+    shuffle = TRUE,
+    epochs = fnn_ep, batch_size = fnn_batch_size,
+    verbose = 0
+  )
+
+
+temp3<-predict(model1,as.matrix(oversample[,-1]))
+confusionMatrix(temp3>=0.5, oversample[,1]) -> tt3
+tt3
+(tt3[1,1]+tt3[2,2])/(sum(tt3))*100
+tt3[1,1]/(tt3[1,1]+tt3[1,2])*100
+tt3[2,2]/(tt3[2,1]+tt3[2,2])*100
+
+
+
+```
+
+```{r}
+### Oversampling with random copy########
+
+
+##data partition##
+df = df[sample(nrow(df),nrow(df),replace=FALSE),]
+# 0의 범주를 갖는 행과 1의 범주를 갖는 행을 분리
+df_class_0 <- df[df$Class == 0, ]
+df_class_1 <- df[df$Class == 1, ]
+
+# 0의 범주를 8대2 비율로 train과 test로 나눔
+train_class_0_rows <- round(0.8 * nrow(df_class_0))
+train_class_0 <- df_class_0[1:train_class_0_rows, ]
+test_class_0 <- df_class_0[(train_class_0_rows + 1):nrow(df_class_0), ]
+
+nrow(train_class_0)
+
+# 1의 범주를 8대2 비율로 train과 test로 나눔
+
+train_class_1_rows <- round(0.8 * nrow(df_class_1))
+train_class_1 <- df_class_1[1:train_class_1_rows, ]
+train_class_1 <- train_class_1[sample(nrow(train_class_1),nrow(train_class_0),replace=TRUE),]
+test_class_1 <- df_class_1[(train_class_1_rows + 1):nrow(df_class_1), ]
+
+# train과 test를 합쳐 최종 train_df와 test_df 생성
+df <- rbind(train_class_0, train_class_1)
+dfTS <- rbind(test_class_0, test_class_1)
+dfTR0 = df[df$Class==0,]
+overDF1 = df[df$Class==1,]
+table(df$Class)
+table(dfTS$Class)
+
+glmOver =glm(Class~V1+V2+V3+V4+V5+V6+V7+V8+V9+V10+V11+V12+V13+V14+V15+
+               V16+V17+V18+V19+V20+V21+V22+V23+V24+V25+V26+V27+V28+Amount,data=df,family="binomial")
+summary(glmOver)
+
+summary(glmOver)
+
+confusionMatrix(predict(glmOver, type="response") >= 0.5, df[,1])->tt
+tt
+(tt[1,1]+tt[2,2])/sum(tt)*100
+
+
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+
+```
+
+```{r}
+
+
+confusionMatrix(predict(glmOver, as.data.frame(dfTS),type="response") >= 0.5, dfTS[,1])->tt1
+tt1
+(tt1[1,1]+tt1[2,2])/sum(tt1)*100
+tt1[1,1]/(tt1[1,1]+tt1[1,2])*100
+tt1[2,2]/(tt1[2,1]+tt1[2,2])*100
+table(dfTS$Class)
+
+
+```
+
+
+
+
+
+```{r}
+#####VAE fitting#######
+
+if (tensorflow::tf$executing_eagerly())
+  tensorflow::tf$compat$v1$disable_eager_execution()
+
+library(keras)
+K <- keras::backend()
+
+# training parameters
+vae_batch_size = 160L
+fnn_batch_size = 160L
+epochs = 1L
+vae_ep = 1L
+fnn_ep = 7L
+vae_flag = 0L
+
+sel_pr_up = 1.0 # upper bound probability for VAE
+sel_pr_dw = 0.0 # lower bound probability for VAE
+sel_rate = 0.6
+
+vae_w1 = 0.0
+vae_w2 = 0.0
+vae_w3 = 1.0
+
+# latent and intermediate dimension
+latent_dim = 2L
+intermediate_dim = 10L
+epsilon_std <- 0.1
+
+
+
+# input image dimensions
+input_shape = c(k+1)
+
+# encoder
+original_input_size = c(k+1)
+inp <- layer_input(shape = original_input_size)
+x <- layer_lambda(inp, f=function(x) {x[,2:(k+1)]})
+y <- layer_lambda(inp, f=function(x) {x[,1:1]})
+
+hidden_1 <- layer_dense(x, units=intermediate_dim, activation="relu")
+dropout_1 <- layer_dropout(hidden_1, rate = 0.5)
+hidden_2 <- layer_dense(dropout_1, units=intermediate_dim, activation="relu")
+dropout_2 <- layer_dropout(hidden_2, rate = 0.5)
+
+z_mean = layer_dense(dropout_2, units = latent_dim)
+z_log_var <- layer_dense(hidden_2, units = latent_dim)
+
+# sampling part
+sampling <- function(args) {
+  z_mean <- args[, 1:(latent_dim)]
+  z_log_var <- args[, (latent_dim + 1):(2 * latent_dim)]
+  
+  epsilon <- k_random_normal(
+    shape = c(k_shape(z_mean)[[1]]),
+    mean = 0.,
+    stddev = epsilon_std
+  )
+  z_mean + k_exp(z_log_var) * epsilon
+}
+
+z <- layer_concatenate(list(z_mean, z_log_var)) %>% layer_lambda(sampling)
+
+# decoder + prediction model
+output_shape = c(vae_batch_size, k)
+
+decoder_hidden = layer_dense(units=intermediate_dim, activation="relu")
+decoder_upsample = layer_dense(units = intermediate_dim, activation="relu")
+decoder_reshape <- layer_reshape(target_shape = intermediate_dim)
+decoder_hidden1 = layer_dense(units=k, activation="sigmoid")
+
+pred_layer = layer_dense(units = 1, activation = "sigmoid")
+
+hidden_decoded  = decoder_hidden(z)
+up_decoded = decoder_upsample(hidden_decoded)
+reshape_decoded <- decoder_reshape(up_decoded)
+hidden1_decoded = decoder_hidden1(reshape_decoded)
+
+y_pred =pred_layer(hidden1_decoded)
+
+
+vae_loss <- function(y, y_pred) {
+  x <- k_flatten(x)
+  x_decoded_mean_squash <- k_flatten(hidden1_decoded)
+  xent_loss <- 1.0 * # initial weight = 1
+    loss_mean_squared_error(x, x_decoded_mean_squash) # loss_categorical_crossentropy도 시도해 볼 것
+  kl_loss <- -0.5 * k_mean(1 + z_log_var - k_square(z_mean) -  # initial weight = -0.5
+                             k_exp(z_log_var), axis = -1L)
+  p_loss <- 1.0 * loss_binary_crossentropy(y, y_pred) # initial weight = 0 * 12000
+  
+  k_mean(xent_loss*vae_w1 + kl_loss*vae_w2 + p_loss*vae_w3)
+}
+
+vae <- keras_model(inp, y_pred)
+optimizers <- keras::keras$optimizers
+vae %>% compile(optimizer = optimizers$legacy$RMSprop(learning_rate=0.0001), loss = vae_loss,
+                metrics = c("accuracy"))
+# summary(vae)
+
+## encoder: model to project inputs on the latent space
+# encoder <- keras_model(inp, list(z_mean, z_log_var))
+
+## build a digit generator that can sample from the learned distribution
+# gen_decoder_input <- layer_input(shape = latent_dim)
+# gen_hidden_decoded <- decoder_hidden(gen_decoder_input)
+# gen_up_decoded <- decoder_upsample(gen_hidden_decoded)
+# gen_hidden1_decoded <- decoder_hidden1(gen_up_decoded)
+
+# generator <- keras_model(gen_decoder_input, gen_hidden1_decoded)
+
+vae1 <- keras_model(inp, hidden1_decoded) # can be used for generating synthetic samples for case 0 and 1
+
+# summary(vae1)
+```
+
+```{r}
+
+model1 <- keras_model_sequential() %>% 
+    layer_dense(units = 1, activation = "sigmoid", input_shape = c(29)) 
+  # %>%     layer_dense(units = 1, activation = "sigmoid")
+  
+  model1 %>% compile(
+    optimizer = "rmsprop",
+    loss = "binary_crossentropy",
+    metrics = c("accuracy")
+  )
+
+  
+```
+
+
+```{r}
+
+history2 <- model1 %>% fit(
+    as.matrix(df[,-1]), as.matrix(df[,1]), 
+    shuffle = TRUE,
+    epochs = fnn_ep, batch_size = fnn_batch_size,
+    validation_data = list(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]))
+    , verbose = 0
+  )
+
+temp3<-predict(model1,as.matrix(df[,-1]))
+confusionMatrix(temp3>=0.5, df[,1]) -> tt3
+tt3
+(tt3[1,1]+tt3[2,2])/(sum(tt3))*100
+tt3[1,1]/(tt3[1,1]+tt3[1,2])*100
+tt3[2,2]/(tt3[2,1]+tt3[2,2])*100
+```
+
+
+```{r}
+temp3 <- predict(model1, as.matrix(dfTS[,-1]))
+confusionMatrix(temp3>=0.5, dfTS[,1]) -> tt3
+tt3
+
+(tt3[1,1]+tt3[2,2])/(sum(tt3))*100
+tt3[1,1]/(tt3[1,1]+tt3[1,2])*100
+tt3[2,2]/(tt3[2,1]+tt3[2,2])*100
+
+```
+
+```{r}
+# j : number of epoch
+# i : number of batchs for one epoch
+
+for (j in epochs) {
+  
+  # FNN MODEL FITTING
+  
+  model1 <- keras_model_sequential() %>% 
+    layer_dense(units = 1, activation = "sigmoid", input_shape = c(29)) 
+  # %>%     layer_dense(units = 1, activation = "sigmoid")
+  
+  model1 %>% compile(
+    optimizer = "rmsprop",
+    loss = "binary_crossentropy",
+    metrics = c("accuracy")
+  )
+  
+  # Insert VAE part here if needed
+  
+  if(vae_flag == 1){
+    history = vae %>% fit(
+      as.matrix(df), as.matrix(df[,1]), 
+      shuffle = TRUE, 
+      epochs = vae_ep, 
+      batch_size = vae_batch_size, 
+      validation_data = list(as.matrix(df_test), as.matrix(df_test[,1])),
+      verbose = 0
+    )
+  }
+  
+  
+  # whole train and test data preparation
+  
+  library(dplyr)
+  
+  temp0 <- predict(vae1, as.matrix(df))
+  temp  <- predict(vae, as.matrix(df))
+  temp1 <- as.data.frame(cbind(c(1), temp0[temp<=quantile(temp, sel_pr_up) & temp>=quantile(temp, sel_pr_dw),]))
+  names(temp1) = names(dfTR0)
+  samp_ind = sample(1:nrow(temp), size = round(nrow(temp)*sel_rate))
+  temp1 <- temp1[samp_ind,]
+  
+  temp2 <- dfTR0 %>% sample_frac(nrow(temp1)/nrow(dfTR0), replace = TRUE)
+  train_df <-rbind(temp2, dfTR0, overDF1, temp1)
+  train_df <- train_df[sample(1:nrow(train_df)),]
+  
+  # print(i)
+  
+  ## ---- Fitting -----------------------------------------------------------
+  
+  history2 <- model1 %>% fit(
+    as.matrix(train_df[,-1]), as.matrix(train_df[,1]), 
+    shuffle = TRUE,
+    epochs = fnn_ep, batch_size = fnn_batch_size,
+    validation_data = list(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]))
+    , verbose = 0
+  )
+  
+  print("FNN")
+  print(history2)
+  # plot(history2)
+  print("VAE")
+  if(vae_flag == 1){
+    print(history)}
+  #plot(history)
+  print(j)
+  
+} 
+ 
+
+if(vae_flag == 1){
+  plot(history)
+}
+plot(history2)
+
+```
+
+```{r}
+temp3 <- predict(vae, as.matrix(dfTS))
+confusionMatrix(temp3>=0.5, dfTS[,1]) -> tt
+tt
+
+
+(tt[1,1]+tt[2,2])/(sum(tt))*100
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+```{r}
+temp3 <- predict(model1, as.matrix(dfTS[,-1]))
+confusionMatrix(temp3>=0.5, dfTS[,1]) -> tt3
+tt3
+```
+
+```{r}
+(tt3[1,1]+tt3[2,2])/(sum(tt3))*100
+```
+accuracy for case 0
+
+```{r}
+tt3[1,1]/(tt3[1,1]+tt3[1,2])*100
+```
+
+accuracy for case 1
+
+```{r}
+tt3[2,2]/(tt3[2,1]+tt3[2,2])*100
+```
+
