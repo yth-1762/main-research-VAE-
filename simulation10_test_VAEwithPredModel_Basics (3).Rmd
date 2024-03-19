@@ -1,0 +1,406 @@
+---
+title: "Data Augmentation using GAN or VAE"
+output:
+  html_document:
+    df_print: paged
+---
+상세한 내용은 명한민논문토픽01.docx 문서를 참고합니다. (7월 이후 QSO 참고)
+기존의 VAE, CVAE, GAN 모형들을 이용하여 data augmentation을 하는 경우 단순 복제와 차이가 없는 점에 착안하여 모형에 Prediction 모형을 포함하고 예측력을 loss함수에 추가하는 모형을 고려.
+
+# Data augmentation for sparse binary categorical response with VAE and Prediction Model 
+
+### 이를 위하여 로지스틱 회귀모형을 대상으로 여러가지 경우에 대한 비교분석을 수행
+
+이 프로그램에서는 우선 downsampling 확률을 매우 작게 하여 random sampling 방법을 적용한 단순한 oversampling 기법을  사용하여 augmented된 자료를 생성하고 훈련자료와 테스트 자료를 구분하며 
+
+추가로 로지스틱회귀모형과 이와 구조가 가장 비슷한 FNN의 성능을 비교한다.
+
+### 우선 기본적인 로지스틱 회귀모형을 가정하고 이를 따르는 자료를 생성
+
+```{r}
+# fix the seed for comparison
+
+library(keras)
+
+```
+
+```{r}
+# 로지스틱 회귀모형
+
+set.seed(50)
+
+# Train 자료
+# number of predictors and observations
+k=10
+nTR=80000
+nTS=20000
+
+# 회귀계수 생성
+bet = c(1,1.5,2,2.5,0,-1,-1.5,-2,-2.5,0)
+
+# 설명변수 생성, crash자료와 비슷하게 만들기 위하여 uniform에서 추출 
+xTR = matrix(runif(nTR*k), ncol=k)
+
+# 반응변수 생성
+library(LaplacesDemon)
+yTR <- rbinom(nTR, 1, invlogit(xTR%*%bet))
+
+dfTR = data.frame(y=yTR,x1=xTR[,1],x2=xTR[,2],x3=xTR[,3],x4=xTR[,4],x5=xTR[,5],x6=xTR[,6],x7=xTR[,7],x8=xTR[,8],x9=xTR[,9],x10=xTR[,10])
+
+# Test 자료
+
+# 설명변수 생성, crash자료와 비슷하게 만들기 위하여 uniform에서 추출 
+xTS = matrix(runif(nTS*k), ncol=k)
+
+# 반응변수 생성
+library(LaplacesDemon)
+yTS <- rbinom(nTS, 1, invlogit(xTS%*%bet))
+
+dfTS = data.frame(y=yTS,x1=xTS[,1],x2=xTS[,2],x3=xTS[,3],x4=xTS[,4],x5=xTS[,5],x6=xTS[,6],x7=xTS[,7],x8=xTS[,8],x9=xTS[,9],x10=xTS[,10])
+
+```
+
+### 훈련자료에 로지스틱 회귀모형을 적합시킨 결과
+기본적으로 생성된 자료의 평가를 위하여 훈련 자료에 로지스틱 회귀모형을 적합한 결과
+
+```{r}
+#now feed it to glm:
+glmAll =glm(y~x1+x2+x3+x4+x5+x6+x7+x8+x9+x10,data=dfTR,family="binomial")
+summary(glmAll)
+```
+### Prediction with training dataset
+```{r}
+library(caret)
+library(InformationValue)
+library(ISLR)
+
+confusionMatrix(predict(glmAll, type="response") >= 0.5, dfTR[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+### Prediction with test dataset
+```{r}
+confusionMatrix(predict(glmAll, type="response", newdata = dfTS[,-1]) >= 0.5, dfTS[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+### 반응변수가 1인 경우에 대한 downsampling
+
+훈련자료에 대하여 반응변수가 1인 경우 downsampling을 하여 0에 비하여 비율이 매우 작은 자료를 생성하고 이들 자료에 대한 기본적인 로지스틱 회귀모형과 기타 다양한 data augmentation모형들을 적합시키고 결과를 비교한다.
+
+```{r}
+# down sampling
+
+# downsampling probability
+dpr = 0.0005 # keep dpr*100% only
+
+dfTR0 = dfTR[dfTR[,1]==0,]
+dfTR1 = dfTR[dfTR[,1]==1,]
+
+downDF1 = dfTR1[sample(nrow(dfTR1), dpr*nrow(dfTR1)), ]
+
+Downdf = rbind(dfTR0, downDF1)
+Downdf = Downdf[sample(1:nrow(Downdf)),]
+```
+
+### 축소된 자료에 로지스틱 회귀모형을 적용
+
+```{r}
+glmDown =glm( y~x1+x2+x3+x4+x5+x6+x7+x8+x9+x10,data=Downdf,family="binomial")
+summary(glmDown)
+```
+### Prediction with downsampled train dataset
+```{r}
+confusionMatrix(predict(glmDown, type="response") >= 0.5, Downdf[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+### Prediction with test dataset
+```{r}
+confusionMatrix(predict(glmDown, type="response", newdata = dfTS[,-1]) >= 0.5, dfTS[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+
+### Oversampling with random copy
+
+무작워로 반응변수가 1인 관측치들을 복제하여 적당한 수가 될 때까지 표본에 추가하는 방법을 적용하는 경우 결과를 비교
+
+```{r}
+overDF1 = downDF1[sample(nrow(downDF1), nrow(dfTR1), replace=TRUE), ]
+
+overdf = rbind(dfTR0, overDF1)
+overdf = overdf[sample(1:nrow(overdf)),]
+```
+
+oversampling된 자료에 로지스틱 회귀모형을 적용하고 결과를 분석한다.
+
+```{r}
+glmOver =glm(y~x1+x2+x3+x4+x5+x6+x7+x8+x9+x10,data=overdf,family="binomial")
+summary(glmOver)
+```
+### Prediction with oversampled train dataset
+```{r}
+confusionMatrix(predict(glmOver, type="response") >= 0.5, overdf[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+### Prediction with test dataset
+```{r}
+confusionMatrix(predict(glmOver, type="response", newdata = dfTS[,-1]) >= 0.5, dfTS[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+### FFN model 
+로지스틱 회귀모형과 가장 비슷한(단순한) FFN 모형을 적합하고 결과를 로지스틱회귀와 비교
+축소하지 않은 자료에 대한 적합
+
+```{r}
+# Let's GO!
+if (tensorflow::tf$executing_eagerly())
+  tensorflow::tf$compat$v1$disable_eager_execution()
+
+library(keras)
+K <- keras::backend()
+
+```
+
+## Model for Original dataset
+
+```{r}
+## ------------------------------------------------------------------------
+network <- keras_model_sequential() %>% 
+  layer_dense(units = 1, activation = "sigmoid", input_shape = c(10)) 
+  # %>%     layer_dense(units = 1, activation = "sigmoid")
+
+## ------------------------------------------------------------------------
+network %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+```
+
+```{r}
+## ---- echo=TRUE, results='hide'------------------------------------------
+network %>% fit(as.matrix(dfTR[,-1]), as.matrix(dfTR[,1]), 
+     epochs = 20, batch_size = 160,
+   validation_data = list(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]))
+)
+
+```
+
+```{r}
+## ------------------------------------------------------------------------
+metrics <- network %>% evaluate(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]), verbose = 0)
+metrics
+```
+```{r}
+temp <- predict(network, as.matrix(dfTS[,-1]))
+confusionMatrix(temp>=0.5, dfTS[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+
+## Model for Downsampled dataset
+
+```{r}
+## ------------------------------------------------------------------------
+network2 <- keras_model_sequential() %>% 
+  layer_dense(units = 1, activation = "sigmoid", input_shape = c(10)) 
+  # %>%     layer_dense(units = 1, activation = "sigmoid")
+
+## ------------------------------------------------------------------------
+network2 %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+```
+
+```{r}
+## ---- echo=TRUE, results='hide'------------------------------------------
+network2 %>% fit(as.matrix(Downdf[,-1]), as.matrix(Downdf[,1]), 
+     epochs = 20, batch_size = 160,
+   validation_data = list(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]))
+)
+
+```
+
+```{r}
+## ------------------------------------------------------------------------
+metrics <- network2 %>% evaluate(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]), verbose = 0)
+metrics
+```
+
+```{r}
+temp1 <- predict(network2, as.matrix(dfTS[,-1]))
+confusionMatrix(temp1>=0.5, dfTS[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
+
+## Model for Oversampled dataset from Downsampled
+
+```{r}
+## ------------------------------------------------------------------------
+network3 <- keras_model_sequential() %>% 
+  layer_dense(units = 1, activation = "sigmoid", input_shape = c(10)) 
+  # %>%     layer_dense(units = 1, activation = "sigmoid")
+
+## ------------------------------------------------------------------------
+network3 %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+```
+
+```{r}
+## ---- echo=TRUE, results='hide'------------------------------------------
+network3 %>% fit(as.matrix(overdf[,-1]), as.matrix(overdf[,1]), 
+     epochs = 20, batch_size = 128,
+   validation_data = list(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]))
+)
+## ------------------------------------------------------------------------
+network3 %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+
+```
+
+```{r}
+## ------------------------------------------------------------------------
+metrics <- network3 %>% evaluate(as.matrix(dfTS[,-1]), as.matrix(dfTS[,1]), verbose = 0)
+metrics
+```
+
+```{r}
+temp2 <- predict(network3, as.matrix(dfTS[,-1]))
+confusionMatrix(temp2>=0.5, dfTS[,1]) -> tt
+tt
+```
+total accuracy
+```{r}
+(tt[1,1]+tt[2,2])/sum(tt)*100
+```
+accuracy for case 0
+
+```{r}
+tt[1,1]/(tt[1,1]+tt[1,2])*100
+```
+
+accuracy for case 1
+```{r}
+tt[2,2]/(tt[2,1]+tt[2,2])*100
+```
